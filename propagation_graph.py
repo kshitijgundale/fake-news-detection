@@ -5,6 +5,7 @@ import pandas as pd
 from utils import *
 import networkx as nx
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from tqdm import tqdm
 
 class PropagationGraphBuilder():
     '''
@@ -21,26 +22,37 @@ class PropagationGraphBuilder():
         self.tweets = None
         self.graph = None
 
-    def build_edges(self, save_to_file, save_location) -> list:
+    def build_edges(self, save_to_file, save_location=None) -> list:
         '''
         Builds edges of propagation graphs, given tweets and their retweets.
         '''
 
-        # Build news node
-        news_node = json.load(os.path.join(self.news_path, 'news_article.json'))
+        # Create networkx graph with tweets/retweets as nodes
+        # and keys of tweet/retweet object as node attributes for easy access 
+        # when building node features
+        g = nx.DiGraph()
+        self.graph = g
 
         # Sorting tweets based on timestamp
         tweets = self.collect_all_tweets()
         if not tweets:
             return
         tweets = sorted(tweets, key=lambda x: x['created_at'])
+        self.graph.add_nodes_from([
+            (x['id_str'], x) for x in tweets
+        ])
+
+        # Build news node
+        news_node = json.load(open(os.path.join(self.news_path, 'news_article.json')))
+        news_node['created_at'] = tweets[0]['created_at']
+        self.graph.add_node(self.news_id, **news_node)
 
         # Searching immediate source of tweet and updating edges list
         edges = [] # List of tuples -> (ParentNode, ChildNode)
         edges.append((self.news_id, tweets[0]['id_str'])) # Source of earliest tweet will be news article itself
 
         ## Searching for rest of tweets
-        for i in range(1, len(tweets)):
+        for i in tqdm(range(1, len(tweets))):
             target_tweet = tweets[i]
             source = None
             for j in range(0, i): 
@@ -60,9 +72,12 @@ class PropagationGraphBuilder():
                 edges.append((source['id_str'], target_tweet['id_str']))
             
             # Repeat the process for retweets
-            retweets = self.collect_all_retweets(target_tweet)
+            retweets = self.collect_all_retweets(target_tweet['id_str'])
             
             if retweets:
+                self.graph.add_nodes_from([
+                    (x['id_str'], x) for x in retweets
+                ])
                 retweets = sorted(retweets, key=lambda x: x['created_at'])
                 edges.append((target_tweet['id_str'], retweets[0]['id_str']))
                 for i in range(1, len(retweets)):
@@ -85,21 +100,13 @@ class PropagationGraphBuilder():
                     else:
                         edges.append((source['id_str'], target_retweet['id_str']))
 
+        # add edges to graph
+        self.graph.add_edges_from(edges)
+
         # save edges to txt file
         if save_to_file:
             with open(os.path.join(save_location, f'{self.news_id}_graph.txt'), 'w') as f:
                 json.dump(edges, f)
-
-        # Create networkx graph with tweets/retweets as nodes
-        # and keys of tweet/retweet object as node attributes for easy access 
-        # when building node features
-        g = nx.DiGraph()
-        g.add_node(self.news_id, **news_node)
-        g.add_nodes_from([
-            (x['id_str'], x) for x in tweets
-        ])
-        g.add_edges_from(edges)
-        self.graph = g
 
         return edges
 
@@ -110,9 +117,11 @@ class PropagationGraphBuilder():
         '''
 
         feature_names = [
-            'source_time_diff'
+            'id',
+            'type',
+            'source_time_diff',
             'account_age',
-            'parent_time_diff'
+            'parent_time_diff',
             'avg_child_time_diff',
             'is_verified',
             'num_friends',
@@ -124,15 +133,16 @@ class PropagationGraphBuilder():
         data = []
         
         tweets = self.collect_all_tweets()
-        source = self.graph.nodes[self.news_id] if self.graph.nodes[self.news_id]['publish_date'] else tweets[0]
-        for tweet in tweets:
+        source = self.graph.nodes[self.news_id]
+        for tweet in tqdm(tweets):
 
             id = tweet['id_str']
+            type = 'tweet'
             
             # Temporal Features
-            source_time_diff = tweet['created_at'] - source['publish_date']
+            source_time_diff = tweet['created_at'] - source['created_at']
             account_age = get_account_age(tweet['created_at'], tweet['user']['created_at'])
-            parent_time_dff = get_parent_time_diff(self.graph, self.news_id, tweet['id_str'], tweet['created_at'])
+            parent_time_dff = get_parent_time_diff(self.graph, tweet['id_str'], tweet['created_at'])
             avg_child_time_diff = get_avg_child_time_diff(self.graph, tweet['id_str'], tweet['created_at'])
 
             # User-based features
@@ -143,10 +153,10 @@ class PropagationGraphBuilder():
             # Text-based features
             num_hastags = len(tweet['entities']['hashtags'])
             num_mentions = len(tweet['entities']['user_mentions'])
-            vader_score = get_vader_score(tweet['text'])
+            vader_score = get_vader_score(tweet['text'], self.vader)
 
             data.append([
-                id, source_time_diff, account_age, parent_time_dff,
+                id, type, source_time_diff, account_age, parent_time_dff,
                 avg_child_time_diff, is_verified, num_friends, num_followers,
                 num_hastags, num_mentions, vader_score
             ])
@@ -155,11 +165,12 @@ class PropagationGraphBuilder():
             for retweet in self.all_retweets[tweet['id_str']]:
 
                 id = retweet['id_str']
+                type = 'retweet'
 
                 # Temporal Features
-                source_time_diff = retweet['created_at'] - source['publish_date']
+                source_time_diff = retweet['created_at'] - source['created_at']
                 account_age = get_account_age(retweet['created_at'], retweet['user']['created_at'])
-                parent_time_dff = get_parent_time_diff(self.graph, self.news_id, retweet['id_str'], retweet['created_at'])
+                parent_time_dff = get_parent_time_diff(self.graph, retweet['id_str'], retweet['created_at'])
                 avg_child_time_diff = get_avg_child_time_diff(self.graph, retweet['id_str'], retweet['created_at'])
 
                 # User-based features
@@ -170,10 +181,10 @@ class PropagationGraphBuilder():
                 # Text-based features
                 num_hastags = len(retweet['entities']['hashtags'])
                 num_mentions = len(retweet['entities']['user_mentions'])
-                vader_score = get_vader_score(retweet['text'])
+                vader_score = get_vader_score(retweet['text'], self.vader)
 
                 data.append([
-                    id, source_time_diff, account_age, parent_time_dff,
+                    id, type, source_time_diff, account_age, parent_time_dff,
                     avg_child_time_diff, is_verified, num_friends, num_followers,
                     num_hastags, num_mentions, vader_score
                 ])
