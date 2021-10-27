@@ -2,6 +2,6 @@ data/
 preprocessed_data/
 env/
 .vscode/
-*.ipynb
+test.ipynb
 *.pyc
 __pycache__/
