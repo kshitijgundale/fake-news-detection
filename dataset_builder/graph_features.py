@@ -2,7 +2,7 @@ import pandas as pd
 import os
 from tqdm import tqdm
 
-data_path = './preprocessed_data/politifact'
+data_path = './preprocessed_data/gossipcop'
 
 features = None
 data = []
@@ -15,5 +15,5 @@ for label in ['fake', 'real']:
         data.append(list(df['value']) + [news])
 
 dr = pd.DataFrame(data=data, columns=features)
-dr.to_csv('graph_features.csv', index=False)
+dr.to_csv('gossipcop_graph_features.csv', index=False)
         

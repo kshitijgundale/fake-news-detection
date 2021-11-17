@@ -1,7 +1,7 @@
 import os
 import json
 import pandas as pd
-from utils import *
+from dataset_builder.utils import *
 import networkx as nx
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from pathlib import Path

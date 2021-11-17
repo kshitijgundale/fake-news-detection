@@ -1,16 +1,15 @@
 import os
-import json
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
-from propagation_graph import PropagationGraphBuilder
 from tqdm import tqdm
+from dataset_builder.propagation_graph import PropagationGraphBuilder
 
 v = SentimentIntensityAnalyzer()
 
 DATASETS = [
     # {'source': 'politifact', 'label': 'fake'},
-    {'source': 'politifact', 'label': 'real'},
+    # {'source': 'politifact', 'label': 'real'},
     # {'source': 'gossipcop', 'label': 'fake'},
-    # {'source': 'gossipcop', 'label': 'real'}
+    {'source': 'gossipcop', 'label': 'real'}
 ]
 
 
