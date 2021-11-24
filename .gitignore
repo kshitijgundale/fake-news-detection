@@ -5,3 +5,4 @@ env/
 test.ipynb
 *.pyc
 __pycache__/
+*.pt
