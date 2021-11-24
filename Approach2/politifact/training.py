@@ -22,7 +22,7 @@ for fold, (train_index, val_index) in enumerate(kfolds):
   print(f"Fold: {fold + 1}")
   print("------------------------")
 
-  model = GCN(hidden_channels=64)
+  model = GCN()
 
   train_index = np.array(train_index)
   indexes, _ = RandomOverSampler().fit_resample(train_index.reshape(-1,1), [train_dataset[i].y for i in train_index])

@@ -8,10 +8,10 @@ from sklearn.metrics import f1_score
 
 
 class GCN(pl.LightningModule):
-    def __init__(self, hidden_channels):
+    def __init__(self):
         super(GCN, self).__init__()
         torch.manual_seed(12345)
-        self.conv1 = GraphConv(12, hidden_channels)
+        self.conv1 = GraphConv(12, 64)
         self.conv2 = GraphConv(64, 64)
         self.conv3 = GraphConv(64, 64)
         self.conv4 = GraphConv(64, 64)
