@@ -6,13 +6,14 @@ import pytorch_lightning as pl
 from torch_geometric.loader import DataLoader
 from models.gnn import GCN
 from torch_geometric.nn import GCNConv, GraphConv, SAGEConv, GATConv
+from sklearn.utils.class_weight import compute_class_weight
 
 import re
 from sentence_transformers import SentenceTransformer
 from models.text import TextModule
 
 dataset = torch.load("politifact_gdl_dataset.pt")
-kfolds = dataset['kfolds']
+val_dataset = dataset['val_dataset']
 train_dataset = dataset['train_dataset']
 test_dataset = dataset['test_dataset']
 
@@ -24,43 +25,32 @@ conv_classes = [GraphConv, GCNConv, SAGEConv, GATConv]
 
 for conv_class in conv_classes:
 
-  gnn_scores = []
+    class_weights = compute_class_weight(class_weight="balanced", classes=[0,1], y=[i.y for i in train_dataset])
+    class_weights = torch.FloatTensor(class_weights)
 
-  for fold, (train_index, val_index) in enumerate(kfolds):
-    print(f"Conv Layer: {conv_class}")
-    print("------------------------")
-    print(f"Fold: {fold + 1}")
-    print("------------------------")
-
-    model = GCN(hidden_channels=64, conv_class=conv_class)
-
-    train_index = np.array(train_index)
-    indexes, _ = RandomOverSampler().fit_resample(train_index.reshape(-1,1), [train_dataset[i].y for i in train_index])
-    X_train = [train_dataset[i] for i in indexes.ravel()]
-    X_val = [train_dataset[i] for i in val_index]
-
-    train_loader = DataLoader(X_train, batch_size=64, shuffle=False)
-    val_loader = DataLoader(X_val, batch_size=64, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
     checkpoint = ModelCheckpoint(monitor='val_loss', mode='min', save_top_k = 1)
 
     trainer = pl.Trainer(
-      max_epochs=50,
-      deterministic=True,
-      log_every_n_steps = 1,
-      callbacks=[checkpoint]
+        max_epochs=100,
+        deterministic=True,
+        log_every_n_steps = 1,
+        callbacks=[checkpoint]
     )
+    model = GCN(hidden_channels=64, class_weights=class_weights)
     trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
     model = GCN.load_from_checkpoint(trainer.checkpoint_callback.best_model_path, hidden_channels=64)
     f1 = trainer.validate(model, val_loader)[0]['f1']
-    gnn_scores.append(f1)
 
-  print(f"GNN Val accuracy using : {conv_class} : " + str(sum(gnn_scores)/len(gnn_scores)))
+    print(f"GNN Val accuracy using {conv_class} : {f1}")
 
 
 ###################################
 ######### Text Training ###########
 ###################################
+
 
 def text_to_embedding(transformer, emb_type, data):
   X_train = []
@@ -98,40 +88,35 @@ for model in models:
     transformer = SentenceTransformer(model_name_or_path=model)
 
     X_train, y_train = text_to_embedding(transformer, emb_type, train_dataset)
+    X_val, y_val = text_to_embedding(transformer, emb_type, val_dataset)
 
     X_train = torch.tensor(X_train, dtype=torch.float)
     y_train = torch.tensor(y_train, dtype=torch.long)
+    X_val = torch.tensor(X_val, dtype=torch.float)
+    y_val = torch.tensor(y_val, dtype=torch.long)
     text_train_dataset = torch.utils.data.TensorDataset(X_train, y_train)
+    text_val_dataset = torch.utils.data.TensorDataset(X_val, y_val)
 
-    scores = []
+    class_weights = compute_class_weight(class_weight="balanced", classes=[0,1], y=[i.y for i in train_dataset])
+    class_weights = torch.FloatTensor(class_weights)
 
-    for fold, (train_index, val_index) in enumerate(kfolds):
-      print(f"Model: {model}, emb_type: {emb_type}")
-      print("------------------------")
-      print(f"Fold: {fold + 1}")
-      print("------------------------")
+    train_loader = DataLoader(text_train_dataset, batch_size=64, shuffle=False)
+    val_loader = DataLoader(text_val_dataset, batch_size=64, shuffle=False)
 
-      model = TextModule(d_in=768)
+    checkpoint = ModelCheckpoint(monitor='val_loss', mode='min', save_top_k = 1)
 
-      train_index = np.array(train_index)
-      indexes, _ = RandomOverSampler().fit_resample(train_index.reshape(-1,1), [text_train_dataset[i][1] for i in train_index])
-      X_train = [text_train_dataset[i] for i in indexes.ravel()]
-      X_val = [text_train_dataset[i] for i in val_index]
-
-      train_loader = DataLoader(X_train, batch_size=64, shuffle=False)
-      val_loader = DataLoader(X_val, batch_size=64, shuffle=False)
-
-      checkpoint = ModelCheckpoint(monitor='val_loss', mode='min', save_top_k = 1)
-
-      trainer = pl.Trainer(
-        max_epochs=25,
+    trainer = pl.Trainer(
+        max_epochs=100,
         deterministic=True,
         log_every_n_steps = 1,
         callbacks=[checkpoint]
-      )
-      trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
-      model = TextModule.load_from_checkpoint(trainer.checkpoint_callback.best_model_path, d_in=768)
-      f1 = trainer.validate(model, val_loader)[0]['f1']
-      scores.append(f1)
+    )
+    model = GCN(hidden_channels=64, class_weights=class_weights)
+    trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+    model = GCN.load_from_checkpoint(trainer.checkpoint_callback.best_model_path, hidden_channels=64)
+    f1 = trainer.validate(model, val_loader)[0]['f1']
 
-    print(f"Text Val accuracy using : {model} and {emb_type} : " + str(sum(scores)/len(scores)))
+    print(f"Text Val accuracy using {model} and {emb_type}: {f1}")
+    
+
+

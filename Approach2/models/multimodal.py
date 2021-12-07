@@ -1,27 +1,23 @@
 import torch
 from torch.nn import Linear
+import torch.nn.functional as F
 import pytorch_lightning as pl
 from sklearn.metrics import f1_score
-import torch.nn.functional as F
 
-class TextModule(pl.LightningModule):
-
+class MultiModal(pl.LightningModule):
+  
   def __init__(self, d_in, class_weights=None):
-    super(TextModule, self).__init__()
+    super(MultiModal, self).__init__()
     torch.manual_seed(12345)
     self.class_weights = class_weights
-    self.lin1 = Linear(d_in, 128)
-    self.lin2 = Linear(128, 64)
-    self.lin3 = Linear(64, 32)
-    self.lin4 = Linear(32, 2)
+    self.lin1 = Linear(d_in, 32)
+    self.lin2 = Linear(32, 2)
 
     self.loss_f = torch.nn.CrossEntropyLoss(weight=self.class_weights)
 
   def forward(self, x):
     x = self.lin1(x).relu()
     x = self.lin2(x).relu()
-    x = self.lin3(x).relu()
-    x = self.lin4(x).relu()
 
     return F.log_softmax(x, dim=-1)
 

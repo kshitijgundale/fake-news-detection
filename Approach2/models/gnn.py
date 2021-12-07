@@ -1,23 +1,26 @@
 import torch
 from torch.nn import Linear
-import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, GraphConv
 from torch_geometric.nn import global_mean_pool
 import pytorch_lightning as pl
 from sklearn.metrics import f1_score
-
+import torch.nn.functional as F
 
 class GCN(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, conv_class, hidden_channels, class_weights=None):
         super(GCN, self).__init__()
         torch.manual_seed(12345)
-        self.conv1 = GraphConv(12, 64)
-        self.conv2 = GraphConv(64, 64)
-        self.conv3 = GraphConv(64, 64)
-        self.conv4 = GraphConv(64, 64)
-        self.conv5 = GraphConv(64, 64)
-        self.lin1 = Linear(64, 32)
-        self.lin2 = Linear(32, 2)
+        self.conv_class = conv_class
+        self.hidden_channels = hidden_channels
+        self.class_weights = class_weights
+        self.conv1 = self.conv_class(12, self.hidden_channels)
+        self.conv2 = self.conv_class(self.hidden_channels, self.hidden_channels)
+        self.conv3 = self.conv_class(self.hidden_channels, self.hidden_channels)
+        self.conv4 = self.conv_class(self.hidden_channels, self.hidden_channels)
+        self.conv5 = self.conv_class(self.hidden_channels, self.hidden_channels)
+        self.lin1 = Linear(self.hidden_channels, int(hidden_channels/2))
+        self.lin2 = Linear(int(hidden_channels/2), 2)
+
+        self.loss_f = torch.nn.CrossEntropyLoss(weight=self.class_weights)
 
     def forward(self, x, edge_index, batch):
         x = self.conv1(x, edge_index).relu()
@@ -34,13 +37,13 @@ class GCN(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         data = batch
         out = self(data.x, data.edge_index, data.batch)
-        loss = torch.nn.CrossEntropyLoss()(out, data.y)
+        loss = self.loss_f(out, data.y)
         return loss
 
     def validation_step(self, batch, batch_idx):
         data = batch
         out = self(data.x, data.edge_index, data.batch)  
-        val_loss = F.cross_entropy(out, data.y)
+        val_loss = self.loss_f(out, data.y)
         self.log("val_loss", val_loss, on_epoch=True)
 
         preds = list(out.argmax(dim=1)) 
