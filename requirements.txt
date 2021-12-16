@@ -104,7 +104,9 @@ importlib-resources==5.4.0
 ipykernel==6.5.0
     # via -r requirements.in
 ipython==7.29.0
-    # via ipykernel
+    # via
+    #   ipykernel
+    #   pyvis
 isodate==0.6.0
     # via rdflib
 jedi==0.18.0
@@ -112,6 +114,7 @@ jedi==0.18.0
 jinja2==3.0.2
     # via
     #   pandas-profiling
+    #   pyvis
     #   torch-geometric
 joblib==1.0.1
     # via
@@ -122,6 +125,8 @@ joblib==1.0.1
     #   pynndescent
     #   sacremoses
     #   scikit-learn
+jsonpickle==2.0.0
+    # via pyvis
 jupyter-client==7.0.6
     # via ipykernel
 jupyter-core==4.9.1
@@ -166,6 +171,7 @@ nest-asyncio==1.5.1
 networkx==2.6.3
     # via
     #   -r requirements.in
+    #   pyvis
     #   torch-geometric
     #   visions
 nltk==3.6.5
@@ -279,6 +285,8 @@ pytorch-lightning==1.5.2
     # via -r requirements.in
 pytz==2021.3
     # via pandas
+pyvis==0.1.9
+    # via -r requirements.in
 pywavelets==1.1.1
     # via imagehash
 pywin32==302

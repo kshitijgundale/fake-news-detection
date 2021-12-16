@@ -16,3 +16,4 @@ optuna
 umap-learn
 sentence-transformers
 pytorch-lightning
+pyvis
