@@ -1,7 +1,7 @@
 import torch
 from torch.nn import Linear
 import pytorch_lightning as pl
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 import torch.nn.functional as F
 
 class TextModule(pl.LightningModule):
@@ -49,8 +49,14 @@ class TextModule(pl.LightningModule):
       preds += batch_preds
       truth += batch_truth
     f1 = f1_score(truth, preds, average='macro')
-    print(f1)
+    precision = precision_score(truth, preds)
+    recall = recall_score(truth, preds)
+    acc = accuracy_score(truth, preds)
     self.log("f1", f1)
+    self.log("precision", precision)
+    self.log("recall", recall)
+    self.log("acc", acc)
+    
 
   def configure_optimizers(self):
     return torch.optim.Adam(self.parameters(), lr=0.001)

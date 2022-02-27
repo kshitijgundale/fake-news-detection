@@ -1,18 +1,18 @@
 import torch
-from imblearn.over_sampling import RandomOverSampler
 from pytorch_lightning.callbacks import ModelCheckpoint
 import numpy as np
 import pytorch_lightning as pl
 from torch_geometric.loader import DataLoader
-from models.gnn import GCN
-from torch_geometric.nn import GCNConv, GraphConv, SAGEConv, GATConv
+from models.gnn import GNN
+from models.text import TextModule
+from torch_geometric.nn import GCNConv, GraphConv, GATConv
 from sklearn.utils.class_weight import compute_class_weight
 
 import re
 from sentence_transformers import SentenceTransformer
 from models.text import TextModule
 
-dataset = torch.load("politifact_gdl_dataset.pt")
+dataset = torch.load("gossipcop_gdl_dataset.pt")
 val_dataset = dataset['val_dataset']
 train_dataset = dataset['train_dataset']
 test_dataset = dataset['test_dataset']
@@ -21,9 +21,9 @@ test_dataset = dataset['test_dataset']
 ########## GNN Training ###########
 ###################################
 
-conv_classes = [GraphConv, GCNConv, SAGEConv, GATConv]
+conv_classes = [GraphConv, GCNConv, GATConv]
 
-for conv_class in conv_classes:
+def train_gnn(conv_class):
 
     class_weights = compute_class_weight(class_weight="balanced", classes=[0,1], y=[i.y for i in train_dataset])
     class_weights = torch.FloatTensor(class_weights)
@@ -34,17 +34,20 @@ for conv_class in conv_classes:
     checkpoint = ModelCheckpoint(monitor='val_loss', mode='min', save_top_k = 1)
 
     trainer = pl.Trainer(
-        max_epochs=100,
+        max_epochs=50,
         deterministic=True,
         log_every_n_steps = 1,
         callbacks=[checkpoint]
     )
-    model = GCN(hidden_channels=64, class_weights=class_weights)
+    model = GNN(conv_class=conv_class, hidden_channels=64, class_weights=class_weights)
     trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
-    model = GCN.load_from_checkpoint(trainer.checkpoint_callback.best_model_path, hidden_channels=64)
+    model = GCN.load_from_checkpoint(trainer.checkpoint_callback.best_model_path, conv_class=conv_class, hidden_channels=64, class_weights=class_weights)
     f1 = trainer.validate(model, val_loader)[0]['f1']
+    precision = trainer.validate(model, val_loader)[0]['precision']
+    recall = trainer.validate(model, val_loader)[0]['recall']
+    acc = trainer.validate(model, val_loader)[0]['acc']
 
-    print(f"GNN Val accuracy using {conv_class} : {f1}")
+    print(f"GNN metrics using {model} and {emb_type}: f1:{f1} precision:{precision} recall:{recall} acc:{acc}")
 
 
 ###################################
@@ -62,12 +65,15 @@ def text_to_embedding(transformer, emb_type, data):
     s = re.sub('[^A-Za-z0-9 ]+', '', s)
 
     tokens = s.split()
-    if emb_type.lower() == "first512":
-      tokens = tokens[:500]
-    elif emb_type.lower() == "last512":
-      tokens = tokens[-500:]
-    elif emb_type.lower() == "fl256":
-      tokens = tokens[:256] + tokens[-256:]
+    if emb_type == "first512":
+      s = " ".join(s.split()[:500])
+    elif emb_type == "last512":
+      s = " ".join(s.split()[-500:])
+    elif emb_type == "fl256":
+      if len(s.split()) > 500:
+        s = " ".join(s.split()[:250] + s.split()[-250:])
+      else:
+        s = " ".join(s.split()[:250])
 
     s = " ".join(tokens)
 
@@ -79,13 +85,11 @@ def text_to_embedding(transformer, emb_type, data):
   
   return X_train, y_train
 
-models = ['all-mpnet-base-v2', 'all-distilroberta-v1', 'all-roberta-large-v1', 'all-MiniLM-L12-v1']
+models = ['all-mpnet-base-v2', 'all-distilroberta-v1', 'all-MiniLM-L12-v1']
 emb_types = ['first512', 'last512', 'fl256']
 
-for model in models:
-  for emb_type in emb_types:
-
-    transformer = SentenceTransformer(model_name_or_path=model)
+def train_text(emb_model, emb_type):
+    transformer = SentenceTransformer(model_name_or_path=emb_model)
 
     X_train, y_train = text_to_embedding(transformer, emb_type, train_dataset)
     X_val, y_val = text_to_embedding(transformer, emb_type, val_dataset)
@@ -106,17 +110,20 @@ for model in models:
     checkpoint = ModelCheckpoint(monitor='val_loss', mode='min', save_top_k = 1)
 
     trainer = pl.Trainer(
-        max_epochs=100,
+        max_epochs=50,
         deterministic=True,
         log_every_n_steps = 1,
         callbacks=[checkpoint]
     )
-    model = GCN(hidden_channels=64, class_weights=class_weights)
+    model = TextModule(d_in=len(X_train[0]), class_weights=class_weights)
     trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
-    model = GCN.load_from_checkpoint(trainer.checkpoint_callback.best_model_path, hidden_channels=64)
+    model = TextModule.load_from_checkpoint(trainer.checkpoint_callback.best_model_path, d_in=len(X_train[0]))
     f1 = trainer.validate(model, val_loader)[0]['f1']
+    precision = trainer.validate(model, val_loader)[0]['precision']
+    recall = trainer.validate(model, val_loader)[0]['recall']
+    acc = trainer.validate(model, val_loader)[0]['acc']
 
-    print(f"Text Val accuracy using {model} and {emb_type}: {f1}")
+    print(f"Text Val metrics using {emb_model} and {emb_type}: f1:{f1} precision:{precision} recall:{recall} acc:{acc}")
     
 
 

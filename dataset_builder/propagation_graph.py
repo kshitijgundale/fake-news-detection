@@ -11,7 +11,7 @@ class PropagationGraphBuilder():
     Each tweet is assumed to be in seperate json file in tweets folder and retweets for all tweets are in single json file named retweets.json
     '''
 
-    def __init__(self, label, news_id, news_path, retweet_gap, vader: SentimentIntensityAnalyzer) -> None:
+    def __init__(self, label, news_id, news_path, retweet_gap, vader: SentimentIntensityAnalyzer, deadline) -> None:
         self.label = label
         self.news_path = news_path
         self.news_id = news_id
@@ -21,6 +21,7 @@ class PropagationGraphBuilder():
         self.tweets = None
         self.users = set()
         self.graph = None
+        self.deadline = deadline
 
     def build_edges(self, save_to_file, save_location=None) -> list:
         '''
@@ -34,29 +35,28 @@ class PropagationGraphBuilder():
         self.graph = g
 
         # Sorting tweets based on timestamp
-        tweets = self.collect_all_tweets()
-        if not tweets:
+        self.collect_all_tweets()
+        if not self.tweets:
             return
-        tweets = sorted(tweets, key=lambda x: x['created_at'])
         self.graph.add_nodes_from([
-            (x['id_str'], x) for x in tweets
+            (x['id_str'], x) for x in self.tweets
         ])
 
         # Build news node
         news_node = json.load(open(os.path.join(self.news_path, 'news_article.json')))
-        news_node['created_at'] = tweets[0]['created_at']
+        news_node['created_at'] = self.tweets[0]['created_at']
         self.graph.add_node(self.news_id, **news_node)
 
         # Searching immediate source of tweet and updating edges list
         edges = [] # List of tuples -> (ParentNode, ChildNode)
 
         ## Searching for rest of tweets
-        for i in range(0, len(tweets)):
-            target_tweet = tweets[i]
+        for i in range(0, len(self.tweets)):
+            target_tweet = self.tweets[i]
             self.users.add(target_tweet['user']['id_str'])
             source = None
             for j in range(0, i): 
-                candidate_source = tweets[j]
+                candidate_source = self.tweets[j]
                 
                 # Check if user of candidate_source mentions OR is mentioned by user target tweet
                 cond_a = candidate_source['user']['id_str'] in [x['id_str'] for x in target_tweet['entities']['user_mentions']]
@@ -72,13 +72,14 @@ class PropagationGraphBuilder():
                 edges.append((source['id_str'], target_tweet['id_str']))
             
             # Repeat the process for retweets
-            retweets = self.collect_all_retweets(target_tweet['id_str'])
+            self.collect_all_retweets(target_tweet['id_str'], self.tweets[0])
             
+            retweets = self.all_retweets[target_tweet['id_str']]
             if retweets:
                 self.graph.add_nodes_from([
                     (x['id_str'], x) for x in retweets
                 ])
-                retweets = sorted(retweets, key=lambda x: x['created_at'])
+                
                 for i in range(0, len(retweets)):
                     target_retweet = retweets[i]
                     self.users.add(target_retweet['user']['id_str'])
@@ -135,9 +136,8 @@ class PropagationGraphBuilder():
         ]
         data = []
         
-        tweets = self.collect_all_tweets()
         source = self.graph.nodes[self.news_id]
-        for tweet in tweets:
+        for tweet in self.tweets:
 
             id = tweet['id_str']
             type = 'tweet'
@@ -214,11 +214,12 @@ class PropagationGraphBuilder():
                     tweet = json.load(open(os.path.join(tweets_path, tweet_file)))
                     tweet['created_at'] = twittertime_to_timestamp(tweet['created_at'])
                     tweets.append(tweet)
-            self.tweets = tweets
+            tweets = sorted(tweets, key=lambda x: x['created_at'])
+            self.tweets = [i for i in tweets if (i['created_at'] - tweets[0]['created_at']) <= self.deadline]
             self.num_of_tweets = len(tweets)
         return self.tweets
 
-    def collect_all_retweets(self, tweet_id) -> list:
+    def collect_all_retweets(self, tweet_id, source) -> list:
         '''
         Returns a list of all available retweets for a tweet
         '''
@@ -227,7 +228,10 @@ class PropagationGraphBuilder():
         retweets = self.all_retweets.get(tweet_id, [])
         for i in retweets:
             i['created_at'] = twittertime_to_timestamp(i['created_at'])
-        return retweets
+        retweets = sorted(retweets, key=lambda x: x['created_at'])
+        retweets = [i for i in retweets if (i['created_at'] - source['created_at']) <= self.deadline]
+        self.all_retweets[tweet_id] = retweets
+        return self.all_retweets
 
     def graph_statistics(self, save_to_file, save_location=None):
         '''
