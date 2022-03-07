@@ -1,9 +1,6 @@
 data/
 raw_data/
-preprocessed_data/
-preprocessed_data_5h/
-preprocessed_data_15h/
-preprocessed_data_25h/
+preprocessed_data*/
 env/
 .vscode/
 test.ipynb

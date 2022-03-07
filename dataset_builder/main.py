@@ -8,8 +8,8 @@ v = SentimentIntensityAnalyzer()
 DATASETS = [
     # {'source': 'politifact', 'label': 'fake'},
     # {'source': 'politifact', 'label': 'real'},
-    {'source': 'gossipcop', 'label': 'fake'},
-    # {'source': 'gossipcop', 'label': 'real'}
+    # {'source': 'gossipcop', 'label': 'fake'},
+    {'source': 'gossipcop', 'label': 'real'}
 ]
 
 

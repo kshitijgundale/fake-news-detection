@@ -9,7 +9,7 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 import torch
 from tqdm import tqdm
 
-def gdl_dataset_builder(data_path, test_size, dataset_name, val_size=None, cv=None):    
+def gdl_dataset_builder(data_path, test_size, dataset_name, early_size, val_size=None, cv=None):    
     labels = ['fake', 'real']
 
     data_list = []
@@ -50,7 +50,9 @@ def gdl_dataset_builder(data_path, test_size, dataset_name, val_size=None, cv=No
             data_list.append(data)
     
     train_dataset, test_dataset = train_test_split(data_list, test_size=test_size, stratify=[i.y for i in data_list])
+    train_dataset, early_dataset = train_test_split(train_dataset, test_size=early_size/(1-test_size), stratify=[i.y for i in train_dataset])
     print("Length of test_dataset: " + str(len(test_dataset)))
+    print("Length of early_dataset: " + str(len(early_dataset)))
 
     dataset = {}
     news_ids = {}
@@ -65,31 +67,36 @@ def gdl_dataset_builder(data_path, test_size, dataset_name, val_size=None, cv=No
         dataset['kfolds'] = kfolds
         dataset['test_dataset'] = test_dataset
         dataset['train_dataset'] = train_dataset
+        dataset['early_dataset'] = early_dataset
 
         news_ids['kfolds'] = kfolds
-        news_ids['test_dataset'] = [i.news_id for i in test_dataset]
-        news_ids['train_dataset'] = [i.news_id for i in train_dataset]
+        news_ids['test_dataset'] = [(i.news_id, i.y) for i in test_dataset]
+        news_ids['train_dataset'] = [(i.news_id, i.y) for i in train_dataset]
+        news_ids['early_dataset'] = [(i.news_id, i.y) for i in early_dataset]
 
     else:
-        train_dataset, val_dataset = train_test_split(train_dataset, test_size=val_size/(1-test_size), stratify=[i.y for i in train_dataset])
+        train_dataset, val_dataset = train_test_split(train_dataset, test_size=val_size/(1-(test_size+early_size)), stratify=[i.y for i in train_dataset])
         print("Length of train_dataset: " + str(len(train_dataset)))
         print("Length of val_dataset: " + str(len(val_dataset)))
         dataset['train_dataset'] = train_dataset
         dataset['val_dataset'] = val_dataset
         dataset['test_dataset'] = test_dataset
+        dataset['early_dataset'] = early_dataset
 
-        news_ids['test_dataset'] = [i.news_id for i in test_dataset]
-        news_ids['train_dataset'] = [i.news_id for i in train_dataset]
-        news_ids['val_dataset'] = [i.news_id for i in val_dataset]
+        news_ids['test_dataset'] = [(i.news_id, i.y) for i in test_dataset]
+        news_ids['train_dataset'] = [(i.news_id, i.y) for i in train_dataset]
+        news_ids['val_dataset'] = [(i.news_id, i.y) for i in val_dataset]
+        news_ids['early_dataset'] = [(i.news_id, i.y) for i in early_dataset]
 
     torch.save(dataset, f'{dataset_name}_gdl_dataset.pt')
     json.dump(news_ids, open(f"{dataset_name}_news_ids_dataset.json", 'w'))
 
 gdl_dataset_builder(
-    data_path="../preprocessed_data/politifact",
-    test_size=0.20,
-    cv = 10,
-    dataset_name="politifact"
+    data_path = "../preprocessed_data/gossipcop",
+    test_size = 0.05,
+    early_size = 0.1,
+    val_size=0.1,
+    dataset_name = "gossipcop"
 )
 
         
